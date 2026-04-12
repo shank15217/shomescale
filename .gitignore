@@ -1,0 +1,13 @@
+# Runtime artifacts
+*.pid
+*.log
+*.tmp
+config.json
+peers.json
+wg0.conf
+__pycache__/
+
+# Test/deploy helpers
+test_vm.yaml
+deploy_to_vm.sh
+server.pid
