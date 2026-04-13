@@ -12,7 +12,7 @@ Status legend: ✅ Done | ⚠️ Partial | ❌ Not Started | 🔜 Next
 | DNS resolution (`*.shomescale`) | ✅ | `dnsmasq` forwarding to server port 53 |
 | Web dashboard (`:8080`) | ✅ | Peer list, topology graph, ACL rules |
 | Key rotation & revocation | ✅ | Server-managed keypairs, gen counter, live update |
-| Test framework (pytest) | ✅ | 36 tests, unit + protocol + ACL + rotation |
+| Test framework (pytest) | ✅ | 64 tests, unit + protocol + ACL + rotation + DNS + dashboard + integration |
 
 ## 🚧 Current Roadmap
 
@@ -36,14 +36,15 @@ Status legend: ✅ Done | ⚠️ Partial | ❌ Not Started | 🔜 Next
 | Server is single point of failure | High | No HA/redundancy |
 | No client auto-reconnect (TCP) | Medium | Backoff works, but no exponential jitter |
 
-## 📋 Planned Test Coverage
+## 📋 Test Coverage Status
 
-| Test Area | Tests | Gap |
-|-----------|-------|-----|
-| Protocol framing | 10 | Good |
-| ACL engine | 9 | Missing: wildcard groups, empty peers |
-| Key rotation | 12 | Good |
-| PeersStore | 5 | Missing: save/load, concurrent threads |
-| DNS server | 0 | **Needs test file** |
-| Web dashboard | 0 | **Needs test file** |
-| Integration | 0 | **Needs server+client mock test** |
+| Test Area | Tests | Status |
+|-----------|-------|--------|
+| Protocol framing | 10 | ✅ Complete |
+| ACL engine | 9 | ✅ Complete |
+| Key rotation | 12 | ✅ Complete |
+| PeersStore | 5 | ✅ Complete |
+| DNS server | 13 | ✅ Complete |
+| Web dashboard | 10 | ✅ Complete |
+| Integration | 5 | ✅ Complete |
+| **Total** | **64** | ✅ **All passing** |
