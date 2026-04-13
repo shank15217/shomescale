@@ -46,9 +46,11 @@ class DNSServer:
         return domain, qtype
 
     def _build_dns_response(self, txid, domain, ip_address, authoritative=False):
-        flags = 0x8180
+        flags = 0x8180  # Standard response + RA
         if authoritative:
-            flags |= 0x0400
+            flags |= 0x0400  # Authoritative
+        if ip_address is None:
+            flags |= 0x0003  # NXDOMAIN (rcode=3)
         ancount = 1 if ip_address else 0
         header = struct.pack("!HHHHHH", txid, flags, 1, ancount, 0, 0)
 
