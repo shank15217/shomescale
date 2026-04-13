@@ -239,34 +239,31 @@ class PeersStore:
         """
         with self.lock:
             nodes = []
+            peer_names = []  # for group resolution
             for uid, info in self.peers.items():
                 nodes.append({
                     "name": info["name"],
                     "uuid": uid,
                     "internal_ip": info["internal_ip"],
                     "online": info.get("online", False),
-                    "_k": uid,  # key for SVG positioning
+                    "_k": uid,
                 })
+                peer_names.append(info["name"])
             
             edges = []
-            # Build all directed pairs (no self-loops)
-            peer_list = [
-                {"name": info["name"], "uuid": uid, "online": info.get("online", False)}
-                for uid, info in self.peers.items()
-            ]
-            for src in peer_list:
-                for dst in peer_list:
-                    if src["uuid"] == dst["uuid"]:
+            peer_lookup = {p["name"]: p["uuid"] for p in nodes}
+            for src_name, src_uuid in peer_lookup.items():
+                for dst_name, dst_uuid in peer_lookup.items():
+                    if src_uuid == dst_uuid:
                         continue
-                    # Check ACL: can src communicate with dst?
-                    allowed = self.acls.is_allowed(src["name"], dst["name"])
+                    allowed = self.acls.is_allowed(src_name, dst_name)
                     edges.append({
-                        "from": src["uuid"],
-                        "to": dst["uuid"],
+                        "from": src_uuid,
+                        "to": dst_uuid,
                         "allowed": allowed,
                     })
             
-        rules_data = self.acls.get_rules_data()
+        rules_data = self.acls.get_rules_data(peer_names)
         return {
             "nodes": nodes,
             "edges": edges,

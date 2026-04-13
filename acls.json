@@ -1,12 +1,10 @@
 {
   "groups": {
-    "isolated1": ["pi-cluster01-wg"],
-    "isolated2": ["pi-cluster02-wg"],
+    "isolated-a": ["pi-cluster01-wg"],
+    "isolated-b": ["pi-cluster02-wg"],
     "all": ["*"]
   },
-  "rules": [
-    {"from": "isolated1", "to": "isolated2", "action": "deny"},
-    {"from": "isolated2", "to": "isolated1", "action": "deny"},
-    {"from": "all", "to": "all", "action": "allow"}
+  "isolate": [
+    {"group_a": "isolated-a", "group_b": "isolated-b"}
   ]
 }
