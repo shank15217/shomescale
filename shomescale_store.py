@@ -266,9 +266,9 @@ class PeersStore:
                         "allowed": allowed,
                     })
             
-        rules_summary = self.acls.get_rules_summary()
+        rules_data = self.acls.get_rules_data()
         return {
             "nodes": nodes,
             "edges": edges,
-            "rules": rules_summary,
+            "rules": rules_data,
         }

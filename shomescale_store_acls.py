@@ -130,3 +130,15 @@ class AclEngine:
             act = rule.get("action", "deny").upper()
             summary.append(f"  Rule {i+1}: ({frm} -> {to}) {act}")
         return "\n".join(summary)
+
+    def get_rules_data(self):
+        """Return structured rule data for the dashboard table."""
+        rules = []
+        for i, rule in enumerate(self.rules):
+            rules.append({
+                "idx": i + 1,
+                "from": rule.get("from", "*"),
+                "to": rule.get("to", "*"),
+                "action": rule.get("action", "deny"),
+            })
+        return rules
