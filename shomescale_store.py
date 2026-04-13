@@ -228,3 +228,47 @@ class PeersStore:
     def reload_acls(self):
         """Reload ACL configuration from disk."""
         self.acls.reload()
+
+    def get_topology(self):
+        """Return nodes + edges for the ACL topology graph.
+        
+        Returns all peers as nodes, and ALL pairwise directed edges
+        showing whether the ACL allows or blocks communication.
+        This reveals the full policy even for peers that can't see
+        each other (unlike get_peers which filters out blocked peers).
+        """
+        with self.lock:
+            nodes = []
+            for uid, info in self.peers.items():
+                nodes.append({
+                    "name": info["name"],
+                    "uuid": uid,
+                    "internal_ip": info["internal_ip"],
+                    "online": info.get("online", False),
+                    "_k": uid,  # key for SVG positioning
+                })
+            
+            edges = []
+            # Build all directed pairs (no self-loops)
+            peer_list = [
+                {"name": info["name"], "uuid": uid, "online": info.get("online", False)}
+                for uid, info in self.peers.items()
+            ]
+            for src in peer_list:
+                for dst in peer_list:
+                    if src["uuid"] == dst["uuid"]:
+                        continue
+                    # Check ACL: can src communicate with dst?
+                    allowed = self.acls.is_allowed(src["name"], dst["name"])
+                    edges.append({
+                        "from": src["uuid"],
+                        "to": dst["uuid"],
+                        "allowed": allowed,
+                    })
+            
+        rules_summary = self.acls.get_rules_summary()
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "rules": rules_summary,
+        }

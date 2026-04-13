@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """shomescale client DNS setup - dnsmasq forwarding for *.shomescale
 
 Configures a local dnsmasq that:
@@ -24,7 +25,6 @@ RESOLV_CONF_BACKUP = "/etc/resolv.conf.shomescale.bak"
 
 def setup_dns(server_ip, server_dns_port=53):
     """Configure dnsmasq to forward *.shomescale to the directory server DNS."""
-    global _upstream_ns, _search_domains
     ensure_dnsmasq()
 
     # Read current resolv.conf to find upstream nameservers
