@@ -9,6 +9,7 @@ import uuid
 
 import shared
 from shomescale_store_acls import AclEngine
+from shomescale_rotation import KeyEngine
 
 logger = logging.getLogger("shomescale-store")
 
@@ -20,12 +21,14 @@ class PeersStore:
 
     def __init__(self, peers_file, acls_file=None):
         self.peers_file = peers_file
+        base_dir = os.path.dirname(os.path.abspath(peers_file))
         self.lock = threading.Lock()
         self.peers = {}
         self.name_index = {}
         self.ip_counter = 1
         self.start_time = time.time()
         self.acls = AclEngine(acls_file)
+        self.keys = KeyEngine(base_dir)
         self._load()
 
     def _load(self):
@@ -72,17 +75,38 @@ class PeersStore:
                 )
 
         now = time.time()
-        for info in self.peers.values():
+        for uid, info in self.peers.items():
             if info.get("online", False):
                 info["last_hello"] = now
             else:
                 info["online"] = False
                 info["last_hello"] = 0
 
+        # Backfill keystore for peers migrated from older versions
+        for uid, info in self.peers.items():
+            privkey, pubkey, gen = self.keys.get_keypair(uid)
+            if gen == 0 and info.get("pubkey"):
+                # No keystore entry - create one (key_generation stays at 1)
+                self.keys.keystore[uid] = {
+                    "privkey": info["pubkey"],  # we don't have the actual privkey
+                    "pubkey": info["pubkey"],
+                    "key_generation": 1,
+                    "last_rotated_at": info.get("registered_at", now),
+                    "revoked": False,
+                }
+        self.keys._save()
+
     def _save_unlocked(self):
+        # Save peers + key generation info together
+        data = {}
+        for uid, info in self.peers.items():
+            data[uid] = dict(info)
+            _, _, gen = self.keys.get_keypair(uid)
+            if gen > 0:
+                data[uid]["key_generation"] = gen
         tmp = self.peers_file + ".tmp"
         with open(tmp, "w") as f:
-            json.dump(self.peers, f, indent=2)
+            json.dump(data, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, self.peers_file)
@@ -93,12 +117,13 @@ class PeersStore:
     # -- public, lock-protected methods --
 
     def register(self, name, pubkey, endpoint):
-        """Register a new peer or return error if name already taken."""
+        """Register a new peer - server generates the keypair."""
         with self.lock:
             if self._name_taken(name):
                 return False, {"status": "error", "msg": "Name already taken"}
 
             node_uuid = str(uuid.uuid4())
+            privkey, pubkey = self.keys.create_keypair(node_uuid)
             prefix = shared.INTERNAL_NETWORK.rsplit(".", 1)[0]
             internal_ip = f"{prefix}.{self.ip_counter}"
             now = time.time()
@@ -125,6 +150,26 @@ class PeersStore:
             "name": name,
         }
 
+    def rotate_keys(self):
+        """Rotate keypair for every online peer. Returns list of (uuid, new_pubkey, gen)."""
+        with self.lock:
+            rotated = []
+            for uid, info in self.peers.items():
+                if info.get("online", False):
+                    privkey, pubkey, gen = self.keys.rotate(uid)
+                    if privkey:
+                        info["pubkey"] = pubkey
+                        rotated.append({
+                            "uuid": uid,
+                            "name": info["name"],
+                            "pubkey": pubkey,
+                            "key_generation": gen,
+                            "privkey": privkey,
+                        })
+            self._save_unlocked()
+            logger.info("Rotated keys for %d peers", len(rotated))
+        return rotated
+
     def hello(self, name_or_uuid, endpoint):
         """Update heartbeat. Accepts name or uuid."""
         with self.lock:
@@ -141,19 +186,20 @@ class PeersStore:
 
         return True, {"status": "ok"}
 
-    def get_peers(self, source_name=None, source_uuid=None):
+    def get_peers(self, source_name=None, source_uuid=None, include_self=False):
         """Return list of online peers filtered by ACL rules.
 
         Only returns peers that the requesting peer is allowed to see.
+        If include_self is True, the requesting peer is included in the results.
         """
         with self.lock:
             candidates = []
             for uid, info in self.peers.items():
                 if not info["online"]:
                     continue
-                if source_name and info.get("name") == source_name:
+                if not include_self and source_name and info.get("name") == source_name:
                     continue
-                if source_uuid and uid == source_uuid:
+                if not include_self and source_uuid and uid == source_uuid:
                     continue
                 candidates.append({
                     "name": info["name"],
@@ -162,12 +208,25 @@ class PeersStore:
                     "endpoint": info["endpoint"],
                     "internal_ip": info["internal_ip"],
                     "allowed_ips": info["internal_ip"] + "/32",
+                    "key_generation": self.keys.get_pubkey(uid)[1],
                 })
 
             # Apply ACL filtering
             allowed = self.acls.filter_peers(source_name or source_uuid, candidates)
 
         return allowed
+
+    def get_peer_keys(self, peer_uuid):
+        """Get the current keypair for a peer (privkey + pubkey + generation)."""
+        with self.lock:
+            privkey, pubkey, gen = self.keys.get_keypair(peer_uuid)
+            if privkey is None:
+                return None
+            return {
+                "privkey": privkey,
+                "pubkey": pubkey,
+                "key_generation": gen,
+            }
 
     def get_status(self):
         """Full status for web dashboard."""

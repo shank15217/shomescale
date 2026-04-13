@@ -60,22 +60,24 @@ def _send_request(host, port, req, timeout=10):
 # ---------------------------------------------------------------------------
 
 def cmd_register(server_host, server_port, name, listen_port, paths):
-    from client_wireguard import ensure, generate_keys
+    from client_wireguard import ensure
     ensure()
     config = _load_config(paths["config"])
     if config:
         logger.warning("Already registered as %s (%s)", config["name"], config["internal_ip"])
         return
 
-    privkey, pubkey = generate_keys()
+    # Server generates keypair and returns privkey+pubkey
     resp = _send_request(server_host, server_port, {
-        "action": "register", "name": name, "pubkey": pubkey, "port": listen_port,
+        "action": "register", "name": name, "pubkey": "", "port": listen_port,
     })
     if resp["status"] == "ok":
         config = {
             "name": name,
             "uuid": resp.get("uuid", ""),
-            "privkey": privkey, "pubkey": pubkey,
+            "privkey": resp.get("privkey", ""),
+            "pubkey": resp.get("pubkey", ""),
+            "key_generation": 1,
             "internal_ip": resp["internal_ip"],
             "listen_port": listen_port,
             "server_host": server_host, "server_port": server_port,

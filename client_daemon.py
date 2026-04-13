@@ -43,8 +43,17 @@ def send_request(server_host, server_port, req, timeout=10):
         sock.close()
     return resp
 
+def fetch_my_keys(server_host, server_port, node_id):
+    """Fetch current keypair from server. Updates config if server gen is newer."""
+    keys_resp = send_request(server_host, server_port, {
+        "action": "get_keys", "uuid": node_id
+    })
+    if keys_resp["status"] == "ok" and "keys" in keys_resp:
+        return keys_resp["keys"]
+    return None
+
 def run(config, config_file, server_host, server_port):
-    """Main daemon: heartbeat + peer sync + DNS setup.
+    """Main daemon: heartbeat + peer sync + DNS setup + key rotation.
     Identifies to server via UUID for collision-proof tracking.
     """
     ensure_wg()
@@ -58,7 +67,22 @@ def run(config, config_file, server_host, server_port):
     # Set up DNS forwarding (dnsmasq + resolv.conf)
     setup_dns(server_host, server_dns_port=53)
 
+    # Fetch current keypair from server (handles key rotation recovery)
+    keys = fetch_my_keys(server_host, server_port, node_id)
+    if keys:
+        local_gen = config.get("key_generation", 0)
+        server_gen = keys["key_generation"]
+        if server_gen > local_gen:
+            logger.info("Key update: gen %d -> %d", local_gen, server_gen)
+            config["privkey"] = keys["privkey"]
+            config["pubkey"] = keys["pubkey"]
+            config["key_generation"] = server_gen
+            with open(config_file, "w") as f:
+                json.dump(config, f, indent=2)
+                os.chmod(config_file, 0o600)
+
     last_peers_hash = None
+    last_key_gen = config.get("key_generation", 0)
     last_peer_check = 0
     reconnect_delay = shared.RECONNECT_BASE_DELAY
     consecutive_failures = 0
@@ -82,6 +106,24 @@ def run(config, config_file, server_host, server_port):
 
             now = time.time()
             if now - last_peer_check > shared.PEER_CHECK_INTERVAL:
+                # Fetch my latest keys from server
+                keys = fetch_my_keys(server_host, server_port, node_id)
+                if keys:
+                    server_gen = keys["key_generation"]
+                    if server_gen > last_key_gen:
+                        logger.info("Key rotation detected: gen %d -> %d",
+                                   last_key_gen, server_gen)
+                        config["privkey"] = keys["privkey"]
+                        config["pubkey"] = keys["pubkey"]
+                        config["key_generation"] = server_gen
+                        with open(config_file, "w") as f:
+                            json.dump(config, f, indent=2)
+                            os.chmod(config_file, 0o600)
+                        last_key_gen = server_gen
+                        # Force WG update regardless of peer hash
+                        last_peers_hash = None
+
+                # Fetch peer list
                 peers_resp = send_request(server_host, server_port, {"action": "get_peers"})
                 if peers_resp["status"] == "ok":
                     peers = peers_resp["peers"]

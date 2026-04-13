@@ -47,16 +47,38 @@ def handle_client(conn, addr, store):
                 req["pubkey"],
                 f"{addr[0]}:{req['port']}",
             )
+            if ok:
+                # Include private key from server-generated keypair
+                uid = response.get("uuid")
+                if uid:
+                    privkey, _, gen = store.keys.get_keypair(uid)
+                    if privkey:
+                        response["privkey"] = privkey
         elif action == "hello":
             ok, response = store.hello(
                 req["name"],
                 f"{addr[0]}:{req['port']}",
             )
         elif action == "get_peers":
-            # Pass requesting peer's identity for ACL filtering
+            requestor = req.get("name", "")
+            show_all = requestor != ""  # if client identifies, include their own entry
             response = {"status": "ok", "peers": store.get_peers(
-                source_name=req.get("name"),
+                source_name=requestor,
+                include_self=show_all,
             )}
+        elif action == "get_keys":
+            # Client requests its own keypair (server-generated)
+            peer_uuid = req.get("uuid", "")
+            keys = store.get_peer_keys(peer_uuid)
+            if keys:
+                response = {"status": "ok", "keys": keys}
+            else:
+                response = {"status": "error", "msg": "Unknown peer UUID"}
+        elif action == "rotate_keys":
+            # Admin trigger: rotate all keys
+            rotated = store.rotate_keys()
+            response = {"status": "ok", "rotated_count": len(rotated)}
+            logger.info("Key rotation triggered: %d peers rotated", len(rotated))
         elif action == "reload_acls":
             store.reload_acls()
             response = {"status": "ok", "msg": "ACLs reloaded"}
