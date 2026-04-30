@@ -131,10 +131,19 @@ uv run pytest tests/ --tb=short
 
 ## Deployment
 
-**Server:** Rocky Linux 9 VM on Proxmox (`192.168.35.141`)
+**Production Directory Server:** Hetzner VPS (`debian-2gb-ash-1`, Debian 13, 2GB RAM)
+**Local Test Server:** Rocky Linux 9 VM on Proxmox (`192.168.35.141`)
 **Clients:** 10x Raspberry Pi (Debian 13) at `192.168.35.210-219`
-**Internal mesh:** `100.64.0.0/10` CGNAT range
+**Internal mesh:** `100.64.0.0/24` CGNAT range
 **WireGuard port:** UDP `51820`
+
+### Required Ports (Directory Server)
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 10000 | TCP | Coordination (register, hello, get_peers, key rotation) |
+| 53 | UDP | DNS resolution (`*.shomescale`) |
+| 8080 | TCP | Web dashboard (optional) |
 
 ## Roadmap
 
