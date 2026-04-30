@@ -22,6 +22,7 @@ See [shomescale-architecture.html](shomescale-architecture.html) for the full in
 ## Features
 
 - **WireGuard full-mesh VPN** — P2P tunnels between every node via `wg syncconf`
+- **Local mesh** — same-subnet nodes connect directly via LAN, avoiding relay/hairpin NAT
 - **Central directory server** — TCP coordination with length-prefixed JSON protocol
 - **UUID-based identity** — collision-proof peer identification (display names enforced unique)
 - **DNS resolution** — `*.shomescale` domain via dnsmasq forwarding to server DNS
@@ -29,7 +30,7 @@ See [shomescale-architecture.html](shomescale-architecture.html) for the full in
 - **ACL group isolation** — symmetric bidirectional isolation between groups
 - **Server-managed key rotation** — central key authority with generation counter and live update
 - **Key revocation** — exclude compromised peers from key rotation
-- **Comprehensive test suite** — 64 pytest tests (protocol, ACL, rotation, DNS, dashboard, integration)
+- **Comprehensive test suite** — 81 pytest tests (protocol, ACL, rotation, DNS, dashboard, integration, local mesh)
 
 ## Modules
 
@@ -115,7 +116,7 @@ uv run pytest tests/test_integration.py -v
 uv run pytest tests/ --tb=short
 ```
 
-**Test coverage (64 tests):**
+**Test coverage (81 tests):**
 
 | File | Tests | What's covered |
 |------|-------|----------------|
@@ -126,6 +127,7 @@ uv run pytest tests/ --tb=short
 | `test_dns.py` | 13 | Query parsing, response building, live server |
 | `test_web_dashboard.py` | 10 | HTML rendering, API endpoints, 404s |
 | `test_integration.py` | 5 | Full server + client + ACL round-trip |
+| `test_local_mesh.py` | 17 | Subnet detection, local IP, LAN-direct config, store |
 
 ## Deployment
 
