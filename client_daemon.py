@@ -11,7 +11,7 @@ import time
 
 import shared
 from shomescale_protocol import send_json, recv_json
-from client_wireguard import (ensure as ensure_wg, generate_conf, is_up,
+from client_wireguard import (ensure as ensure_wg, generate_conf, get_local_ip, is_up,
                                verify_listening_port, restart as wg_restart,
                                update as wg_update, wg_down)
 from client_dns import setup_dns, clean_dns
@@ -64,6 +64,20 @@ def run(config, config_file, server_host, server_port):
     # Use UUID for identity if available (newer servers), fall back to name
     node_id = config.get("uuid") or config["name"]
 
+    # Detect local LAN IP for local mesh (direct LAN connections)
+    local_ip = get_local_ip()
+    if local_ip:
+        config["local_ip"] = local_ip
+        logger.info("Local mesh: detected LAN IP %s", local_ip)
+    else:
+        logger.warning("Local mesh: could not detect LAN IP")
+
+    # Derive subnet from local IP (assume /24 for now)
+    local_subnet = None
+    if local_ip:
+        parts = local_ip.split(".")
+        local_subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+
     # Set up DNS forwarding (dnsmasq + resolv.conf)
     setup_dns(server_host, server_dns_port=53)
 
@@ -96,6 +110,9 @@ def run(config, config_file, server_host, server_port):
     while not _stop_requested:
         try:
             req = {"action": "hello", "name": node_id, "port": config["listen_port"]}
+            # Include local endpoint for LAN-direct mesh
+            if local_ip:
+                req["local_endpoint"] = f"{local_ip}:{config['listen_port']}"
             response = send_request(server_host, server_port, req)
             if response["status"] != "ok":
                 logger.warning("Heartbeat failed: %s", response.get("msg"))
@@ -132,8 +149,8 @@ def run(config, config_file, server_host, server_port):
 
                     if peers_hash != last_peers_hash:
                         logger.info("Peers changed, updating WireGuard config...")
-                        conf_full = generate_conf(config, peers, include_interface=True)
-                        conf_sync = generate_conf(config, peers, include_interface=False)
+                        conf_full = generate_conf(config, peers, include_interface=True, subnet=local_subnet)
+                        conf_sync = generate_conf(config, peers, include_interface=False, subnet=local_subnet)
                         wg_update(conf_full, conf_sync, wg_conf_file=wg_conf_file)
 
                         if not verify_listening_port(config):

@@ -2,12 +2,18 @@
 
 Handles WireGuard installation, key generation, config generation,
 and interface management (up/down/restart/sync).
+
+Local mesh: when two nodes share a LAN subnet, they connect directly
+via local_endpoint instead of the directory server's observed (NAT'd)
+endpoint. This mirrors Tailscale's Direct > DERP priority.
 """
 
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import subprocess
 
 import shared
@@ -90,8 +96,48 @@ def generate_keys():
     return privkey, pubkey
 
 
-def generate_conf(config, peers, include_interface=True):
-    """Generate WireGuard config text."""
+def get_local_ip():
+    """Detect the local LAN IP address (not the WireGuard one).
+
+    Creates a UDP socket to an external address (no traffic sent) to
+    determine which interface the OS would use. Returns None on failure.
+    """
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return None
+
+
+def same_subnet(ip_a, ip_b, subnet_cidr):
+    """Check if two IPs belong to the same subnet.
+
+    Args:
+        ip_a: first IP address string (e.g. "192.168.35.5")
+        ip_b: second IP address string (e.g. "192.168.35.10")
+        subnet_cidr: network in CIDR notation (e.g. "192.168.35.0/24")
+
+    Returns True if both IPs are in the given subnet.
+    """
+    try:
+        network = ipaddress.ip_network(subnet_cidr, strict=False)
+        return (ipaddress.ip_address(ip_a) in network and
+                ipaddress.ip_address(ip_b) in network)
+    except (ValueError, TypeError):
+        return False
+
+
+def generate_conf(config, peers, include_interface=True, subnet=None):
+    """Generate WireGuard config text.
+
+    When subnet is provided and config has a local_ip, peers on the
+    same subnet will use their local_endpoint (LAN-direct) instead of
+    the directory server's observed endpoint (NAT'd/public).
+    """
     lines = []
     if include_interface:
         lines.append("[Interface]")
@@ -100,13 +146,25 @@ def generate_conf(config, peers, include_interface=True):
         lines.append(f"ListenPort = {config['listen_port']}")
         lines.append("")
 
+    my_local_ip = config.get("local_ip")
+
     for peer in peers:
         if peer["name"] == config["name"]:
             continue
         lines.append("[Peer]")
         lines.append(f"PublicKey = {peer['pubkey']}")
         lines.append(f"AllowedIPs = {peer['allowed_ips']}")
-        lines.append(f"Endpoint = {peer['endpoint']}")
+
+        # Local mesh: pick best endpoint
+        endpoint = peer["endpoint"]  # default: public/NAT'd
+        if subnet and my_local_ip and peer.get("local_endpoint"):
+            peer_local_ip = peer["local_endpoint"].rsplit(":", 1)[0]
+            if same_subnet(my_local_ip, peer_local_ip, subnet):
+                endpoint = peer["local_endpoint"]
+                logger.debug("Local mesh: %s -> %s (same subnet %s)",
+                             config["name"], peer["name"], subnet)
+
+        lines.append(f"Endpoint = {endpoint}")
         lines.append("PersistentKeepalive = 25")
         lines.append("")
 

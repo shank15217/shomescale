@@ -60,17 +60,24 @@ def _send_request(host, port, req, timeout=10):
 # ---------------------------------------------------------------------------
 
 def cmd_register(server_host, server_port, name, listen_port, paths):
-    from client_wireguard import ensure
+    from client_wireguard import ensure, get_local_ip
     ensure()
     config = _load_config(paths["config"])
     if config:
         logger.warning("Already registered as %s (%s)", config["name"], config["internal_ip"])
         return
 
+    # Detect local IP for local mesh
+    local_ip = get_local_ip()
+    local_endpoint = f"{local_ip}:{listen_port}" if local_ip else None
+
     # Server generates keypair and returns privkey+pubkey
-    resp = _send_request(server_host, server_port, {
+    req = {
         "action": "register", "name": name, "pubkey": "", "port": listen_port,
-    })
+    }
+    if local_endpoint:
+        req["local_endpoint"] = local_endpoint
+    resp = _send_request(server_host, server_port, req)
     if resp["status"] == "ok":
         config = {
             "name": name,
@@ -82,9 +89,14 @@ def cmd_register(server_host, server_port, name, listen_port, paths):
             "listen_port": listen_port,
             "server_host": server_host, "server_port": server_port,
         }
+        if local_ip:
+            config["local_ip"] = local_ip
         _save_config(paths["config"], config)
         logger.info("Registered as %s (ID: %s) with IP %s",
                      name, config["uuid"], config["internal_ip"])
+        if local_ip:
+            logger.info("Local mesh: LAN IP %s, local endpoint %s",
+                        local_ip, local_endpoint)
         logger.info("DNS names: %s.shomescale, %s.shomescale",
                      name, config["uuid"][:8])
     else:

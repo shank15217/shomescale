@@ -116,8 +116,13 @@ class PeersStore:
 
     # -- public, lock-protected methods --
 
-    def register(self, name, pubkey, endpoint):
-        """Register a new peer - server generates the keypair."""
+    def register(self, name, pubkey, endpoint, local_endpoint=None):
+        """Register a new peer - server generates the keypair.
+
+        Args:
+            endpoint: the public/NAT'd endpoint seen by the server.
+            local_endpoint: the LAN endpoint reported by the client (optional).
+        """
         with self.lock:
             if self._name_taken(name):
                 return False, {"status": "error", "msg": "Name already taken"}
@@ -132,6 +137,7 @@ class PeersStore:
                 "uuid": node_uuid,
                 "pubkey": pubkey,
                 "endpoint": endpoint,
+                "local_endpoint": local_endpoint,
                 "internal_ip": internal_ip,
                 "online": True,
                 "last_hello": now,
@@ -170,8 +176,13 @@ class PeersStore:
             logger.info("Rotated keys for %d peers", len(rotated))
         return rotated
 
-    def hello(self, name_or_uuid, endpoint):
-        """Update heartbeat. Accepts name or uuid."""
+    def hello(self, name_or_uuid, endpoint, local_endpoint=None):
+        """Update heartbeat. Accepts name or uuid.
+
+        Args:
+            endpoint: the public/NAT'd endpoint.
+            local_endpoint: the LAN endpoint reported by the client (optional).
+        """
         with self.lock:
             uid = self.peers.get(name_or_uuid, {}).get("uuid")
             if uid is None:
@@ -180,6 +191,8 @@ class PeersStore:
                 return False, {"status": "error", "msg": "Unknown name or uuid"}
 
             self.peers[uid]["endpoint"] = endpoint
+            if local_endpoint is not None:
+                self.peers[uid]["local_endpoint"] = local_endpoint
             self.peers[uid]["last_hello"] = time.time()
             self.peers[uid]["online"] = True
             self._save_unlocked()
@@ -206,6 +219,7 @@ class PeersStore:
                     "uuid": uid,
                     "pubkey": info["pubkey"],
                     "endpoint": info["endpoint"],
+                    "local_endpoint": info.get("local_endpoint"),
                     "internal_ip": info["internal_ip"],
                     "allowed_ips": info["internal_ip"] + "/32",
                     "key_generation": self.keys.get_pubkey(uid)[1],

@@ -46,6 +46,7 @@ def handle_client(conn, addr, store):
                 req["name"],
                 req["pubkey"],
                 f"{addr[0]}:{req['port']}",
+                local_endpoint=req.get("local_endpoint"),
             )
             if ok:
                 # Include private key from server-generated keypair
@@ -58,6 +59,7 @@ def handle_client(conn, addr, store):
             ok, response = store.hello(
                 req["name"],
                 f"{addr[0]}:{req['port']}",
+                local_endpoint=req.get("local_endpoint"),
             )
         elif action == "get_peers":
             requestor = req.get("name", "")
